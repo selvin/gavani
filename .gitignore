@@ -1,0 +1,15 @@
+# Intelli J
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Gradle
+.gradle
+gradle/
+gradlew
+gradlew.bat
+build/
+
+# Mac OSX
+.DS_Store

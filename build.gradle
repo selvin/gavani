@@ -1,0 +1,13 @@
+buildscript {
+  repositories() {
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath 'com.yodle.griddle:griddle:1.7'
+  }
+}
+
+allprojects {
+  apply plugin: 'idea'
+}
