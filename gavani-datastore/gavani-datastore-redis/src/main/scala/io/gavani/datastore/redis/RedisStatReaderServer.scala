@@ -8,21 +8,19 @@ import com.twitter.finagle.Thrift
 import com.twitter.util.Await
 
 object RedisStatReaderServer extends TwitterServer {
-  val flagRedistDest = flag("redisDest", "/$/inet/localhost:6739", "redis dest")
-  val flagServeAddr = flag("serveAddr", new InetSocketAddress(0), "service address")
-  val flagStorageKeyFunction = flag("storageKeyFunction", "concat", "Method used to generate a storage key per stat stored: (concat, concat+sha1)")
+  val flagRedistDest = flag("redisDest", "/$/inet/localhost/6379", "redis dest")
+  val flagServeAddr = flag("serveAddr", new InetSocketAddress(6472), "service address")
+  val flagKeyKeyFunction = flag("keyKey", "concat", "Method used to generate a storage key per stat stored: (concat, concat+sha1)")
+
+  override def defaultHttpPort = 9472
 
   def main() {
-    val fStorageKey = flagStorageKeyFunction() match {
-      case "concat" =>
-        (ns: String, src: String, stat: String, ts: Int) =>
-          ns + ":" + src + ":" + stat + ":" + ts
-    }
     val server = Thrift.serveIface(
       flagServeAddr(),
       new RedisStatReaderService(
         Redis.client.newRichClient(flagRedistDest()),
-        fStorageKey
+        KeyScheme.keyValue(flagKeyKeyFunction()),
+        statsReceiver.scope("gavani_reader")
       )
     )
 

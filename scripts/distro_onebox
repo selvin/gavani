@@ -1,0 +1,82 @@
+#!/bin/bash -xe
+
+#------------------------------------------------------------
+
+# Determine script directory
+SCRIPT_SRC="${BASH_SOURCE[0]}"
+while [ -h "$SCRIPT_SRC" ]; do
+  DIR="$( cd -P "$( dirname "$SCRIPT_SRC" )" && pwd )"
+  SCRIPT_SRC="$(readlink "$SCRIPT_SRC")"
+  [[ $SCRIPT_SRC != /* ]] && SCRIPT_SRC="$DIR/$SCRIPT_SRC"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SCRIPT_SRC" )" && pwd )"
+
+#------------------------------------------------------------
+
+# cleanup
+
+ORIG_DIR=`pwd`
+
+function finish {
+  clean
+  cd $ORIG_DIR
+}
+
+trap finish EXIT
+
+#------------------------------------------------------------
+
+# config
+
+REPO_DIR=${SCRIPT_DIR}/..
+BUILD_DIR=${REPO_DIR}/build
+GRADLE_DIST=build/distributions
+
+DISTRO_NAME=gavani-onebox
+DISTRO_DIR=${BUILD_DIR}/${DISTRO_NAME}
+DISTRO_ZIP=${DISTRO_DIR}.zip
+
+DIST_LOC=${REPO_DIR}/dist
+
+#------------------------------------------------------------
+
+function clean {
+  rm -f ${DISTRO_ZIP}
+  rm -rf ${DISTRO_DIR}
+}
+
+function build {
+  cd $REPO_DIR
+  gradle :gavani-api:distZip
+  gradle :gavani-datastore:gavani-datastore-redis:distZip
+  gradle :gavani-exporter:gavani-exporter-companion:distZip
+  cd -
+}
+
+function assemble {
+  mkdir -p ${DISTRO_DIR}/bin
+
+  cp $REPO_DIR/gavani-api/$GRADLE_DIST/gavani-api.zip ${DISTRO_DIR}
+  cp $REPO_DIR/gavani-datastore/gavani-datastore-redis/$GRADLE_DIST/gavani-datastore-redis.zip ${DISTRO_DIR}
+  cp $REPO_DIR/gavani-exporter/gavani-exporter-companion/$GRADLE_DIST/gavani-exporter-companion.zip ${DISTRO_DIR}
+
+  cd ${REPO_DIR} && zip -r ${DISTRO_DIR}/gavani-web.zip gavani-web/ && cd -
+  cp $REPO_DIR/scripts/onebox/* ${DISTRO_DIR}/bin
+
+  cd $BUILD_DIR && zip -r ${DISTRO_ZIP} ${DISTRO_NAME}/ && cd -
+  mkdir -p ${DIST_LOC}
+  cp -f ${DISTRO_ZIP} ${DIST_LOC}
+}
+
+function onebox {
+  clean
+  build
+  assemble
+  clean
+  echo "Onebox install of gavani is available at: ${DIST_LOC}/${DISTRO_NAME}.zip"
+}
+
+#------------------------------------------------------------
+
+onebox
+

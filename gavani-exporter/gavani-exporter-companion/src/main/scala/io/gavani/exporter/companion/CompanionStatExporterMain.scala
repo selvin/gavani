@@ -1,19 +1,20 @@
 package io.gavani.exporter.companion
 
+import java.util.concurrent.atomic.AtomicReference
+
 import com.twitter.finagle.{Http, Thrift}
 import com.twitter.logging.Logger
-import com.twitter.app.App
-import com.twitter.util.{Timer, JavaTimer}
+import com.twitter.server.TwitterServer
+import com.twitter.util.{TimerTask, Timer, JavaTimer}
 import com.twitter.util.TimeConversions._
 
 import io.gavani.thriftscala.StatWriter
 
-object CompanionStatExporterMain extends App {
-  val log = Logger.get
+object CompanionStatExporterMain extends TwitterServer {
   val timer: Timer = new JavaTimer()
 
   val flagStatWriterDestination = flag("statWriterDestination",
-    "/$/inet/localhost/8600", "dest for StatWriter")
+    "/$/inet/127.0.0.1/6473", "dest for StatWriter")
 
   val flagPeriod = flag("period", 1.minute, "Period for exporting stats")
 
@@ -32,8 +33,12 @@ object CompanionStatExporterMain extends App {
 
   override def failfastOnFlagsNotParsed: Boolean = true
 
+  val exporterTimerTasks = new AtomicReference[Seq[TimerTask]](Nil)
+
+  override def defaultHttpPort = 9474
+
   def main(): Unit = {
-    val statWriter = Thrift.newServiceIface[StatWriter.ServiceIface](
+    val statWriter = Thrift.newIface[StatWriter.FutureIface](
       flagStatWriterDestination(),
       "exporter_stat_writer"
     )
@@ -57,13 +62,16 @@ object CompanionStatExporterMain extends App {
         timer)
     }
 
-    log.info("Scheduling processing...")
-    val exporterTimerTasks = exporters.map { exporter =>
+    exporterTimerTasks.set(exporters.map { exporter =>
       val exporterTimerTask = timer.schedule(flagSchedulePeriod()) { exporter.process() }
       closeOnExit(exporterTimerTask)
       exporterTimerTask
-    }
+    })
+  }
 
-    while(true) { Thread.sleep(1000) }
+  onExit {
+    exporterTimerTasks.get().foreach {
+      _.close(1.second)
+    }
   }
 }

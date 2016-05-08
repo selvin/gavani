@@ -7,15 +7,14 @@ import com.twitter.finagle.Service
 import com.twitter.finagle.http.{Request, Response, Method}
 import com.twitter.logging.Logger
 import com.twitter.util.{Await, Timer, Duration, Time}
+import com.twitter.util.Future
 
-import io.gavani.thriftscala.StatWriter
-import io.gavani.thriftscala.StatWriter.Write.{Args => StatWriterArgs}
-import io.gavani.thriftscala.StatWriteRequest
+import io.gavani.thriftscala._
 
 import scala.collection.mutable
 
 class CompanionStatExporter(
-    statWriter: StatWriter.ServiceIface,
+    statWriter: StatWriter.FutureIface,
     statsHttp: Service[Request, Response],
     statCollectionConfig: StatCollectionConfig,
     period: Duration,
@@ -35,16 +34,24 @@ class CompanionStatExporter(
     val currTime = Time.now
     if(currTime - lastExported.get() >= period + perPeriodDelay) {
       val thisPeriodEnd = currTime.floor(period)
-      log.info("Fetching stats for cfg: " + statCollectionConfig)
+      log.info("Fetching stats for period: " + thisPeriodEnd.toString() + " for cfg: " + statCollectionConfig)
 
-      val req = Request.apply(Method.Get, "admin/metrics.json")
-      val futureStatWrite = statsHttp.apply(req)
-        .map { rep => getStatWriteRequest(getStats(rep), thisPeriodEnd) }
-        .flatMap { sw: StatWriteRequest => statWriter.write(StatWriterArgs(sw)) }
-        .raiseWithin(statsWriteDeadline, new StatsWritingDeadlineExceeded)(timer)
+      val req = Request.apply(Method.Get, "/admin/metrics.json")
+      val futureStatWrite =
+        statsHttp(req)
+          .flatMap { rep => writeStats(getStats(rep), thisPeriodEnd) }
+          // .raiseWithin(statsWriteDeadline, new StatsWritingDeadlineExceeded)(timer)
+          .onSuccess { _ =>
+            log.info("Wrote metrics for cfg: " + statCollectionConfig)
+            lastExported.set(thisPeriodEnd)
+          }
+          .onFailure { _ =>
+            log.info("Failed writing metrics for cfg: " + statCollectionConfig)
+          }
 
       try {
         Await.result(futureStatWrite)
+        log.info("Wrote metrics for cfg: " + statCollectionConfig)
       } catch {
         case _: StatsWritingDeadlineExceeded =>
           log.error("Stats writing deadline exceeded: " + statCollectionConfig +
@@ -52,8 +59,6 @@ class CompanionStatExporter(
         case e: Throwable =>
           log.error(e.toString)
       }
-
-      lastExported.set(thisPeriodEnd)
     }
   }
 
@@ -75,13 +80,13 @@ class CompanionStatExporter(
     }
   }
 
-  def getStatWriteRequest(kv: Map[String, Double], thisPeriodEnd: Time): StatWriteRequest = {
-    StatWriteRequest(
+  def writeStats(kv: Map[String, Double], thisPeriodEnd: Time): Future[Unit] = {
+    statWriter.write(StatWriteRequest(
       statCollectionConfig.namespace,
       statCollectionConfig.source,
       thisPeriodEnd.inSeconds,
       kv
-    )
+    )).unit
   }
 
   def extractDouble(node: JsonNode): Option[Double] = {

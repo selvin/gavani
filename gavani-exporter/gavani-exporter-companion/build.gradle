@@ -4,8 +4,6 @@ apply plugin: 'idea'
 
 sourceCompatibility = 1.8
 
-version = '1.0'
-
 mainClassName = "io.gavani.exporter.companion.CompanionStatExporterMain"
 
 dependencies {

@@ -1,0 +1,124 @@
+#!/bin/bash -xe
+
+#------------------------------------------------------------
+
+# Restore pwd
+ORIG_DIR=`pwd`
+function finish {
+  cd $ORIG_DIR
+}
+trap finish EXIT
+
+#------------------------------------------------------------
+
+# Determine script directory
+SCRIPT_SRC="${BASH_SOURCE[0]}"
+while [ -h "$SCRIPT_SRC" ]; do
+  DIR="$( cd -P "$( dirname "$SCRIPT_SRC" )" && pwd )"
+  SCRIPT_SRC="$(readlink "$SCRIPT_SRC")"
+  [[ $SCRIPT_SRC != /* ]] && SCRIPT_SRC="$DIR/$SCRIPT_SRC"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SCRIPT_SRC" )" && pwd )"
+
+#------------------------------------------------------------
+
+# Configuration
+RELEASES_DIR=$SCRIPT_DIR/..
+BASE_RUN_DIR=$RELEASES_DIR/run
+
+READER_IMPL=gavani-datastore-redis
+WRITER_IMPL=gavani-datastore-redis
+EXPORTER_IMPL=gavani-exporter-companion
+API_IMPL=gavani-api
+
+READER_ZIP=${RELEASES_DIR}/${READER_IMPL}.zip
+WRITER_ZIP=${RELEASES_DIR}/${WRITER_IMPL}.zip
+EXPORTER_ZIP=${RELEASES_DIR}/${EXPORTER_IMPL}.zip
+API_ZIP=${RELEASES_DIR}/${API_IMPL}.zip
+
+READER_RUN_DIR=$BASE_RUN_DIR/gavani-reader
+WRITER_RUN_DIR=$BASE_RUN_DIR/gavani-writer
+EXPORTER_RUN_DIR=$BASE_RUN_DIR/gavani-exporter
+API_RUN_DIR=$BASE_RUN_DIR/gavani-api
+
+START_CMD_SUFFIX=_start_cmd.sh
+READER_START_CMD=$SCRIPT_DIR/reader$START_CMD_SUFFIX
+WRITER_START_CMD=$SCRIPT_DIR/writer$START_CMD_SUFFIX
+EXPORTER_START_CMD=$SCRIPT_DIR/exporter$START_CMD_SUFFIX
+API_START_CMD=$SCRIPT_DIR/api$START_CMD_SUFFIX
+
+STOP_CMD_SUFFIX=_stop_cmd.sh
+READER_STOP_CMD=$SCRIPT_DIR/reader$STOP_CMD_SUFFIX
+WRITER_STOP_CMD=$SCRIPT_DIR/writer$STOP_CMD_SUFFIX
+EXPORTER_STOP_CMD=$SCRIPT_DIR/exporter$STOP_CMD_SUFFIX
+API_STOP_CMD=$SCRIPT_DIR/api$STOP_CMD_SUFFIX
+
+#------------------------------------------------------------
+
+function usage {
+  echo "Usage: gavani <reader|writer|exporter|api> <start|stop>"
+  exit 1
+}
+
+function gavani_main {
+  if [ "$#" -ne 2 ]; then
+    usage
+  fi
+
+  component=$1; shift
+  action=$1; shift
+
+  case "$action" in
+    start)
+      case "$component" in
+        reader)
+          rm -rf $READER_RUN_DIR && mkdir -p $READER_RUN_DIR
+          cd $READER_RUN_DIR && unzip $READER_ZIP
+          source $READER_START_CMD
+          ;;
+        writer)
+          rm -rf $WRITER_RUN_DIR && mkdir -p $WRITER_RUN_DIR
+          cd $WRITER_RUN_DIR && unzip $WRITER_ZIP
+          source $WRITER_START_CMD
+          ;;
+        exporter)
+          rm -rf $EXPORTER_RUN_DIR && mkdir -p $EXPORTER_RUN_DIR
+          cd $EXPORTER_RUN_DIR && unzip $EXPORTER_ZIP
+          source $EXPORTER_START_CMD
+          ;;
+        api)
+          rm -rf $API_RUN_DIR && mkdir -p $API_RUN_DIR
+          cd $API_RUN_DIR && unzip $API_ZIP
+          source $API_START_CMD
+          ;;
+        *)
+          usage
+          ;;
+      esac
+      ;;
+    stop)
+      case "$component" in
+        reader)
+          source $READER_STOP_CMD
+          ;;
+        writer)
+          source $WRITER_STOP_CMD
+          ;;
+        exporter)
+          source $EXPORTER_STOP_CMD
+          ;;
+        api)
+          source $API_STOP_CMD
+          ;;
+        *)
+          usage
+          ;;
+      esac
+      ;;
+    *)
+      usage
+      ;;
+  esac
+}
+
+gavani_main $@

@@ -2,60 +2,77 @@ package io.gavani.datastore.redis
 
 import com.twitter.finagle.redis
 import com.twitter.finagle.redis.util.{CBToString, StringToChannelBuffer}
+import com.twitter.finagle.stats.StatsReceiver
 import com.twitter.io.Charsets
+import com.twitter.logging.Logger
 import io.gavani.thriftscala.StatReader
 import io.gavani.thriftscala.StatReadRequest
 import io.gavani.thriftscala.StatReadResponse
 import com.twitter.util._
 
+case class ValueNotFoundAtTimestamp(val timestamp: Int) extends Throwable
+
 class RedisStatReaderService(
     val redisClient: redis.Client,
-    val fStoreKey: (String, String, String, Int) => String
+    val fStoreKey: (String, String, String, Int) => String,
+    val statReceiver: StatsReceiver
 ) extends StatReader[Future] {
+
+  private val log = Logger.get
+  private val counterRequests = statReceiver.counter("requests")
+  private val counterSuccess = statReceiver.counter("success")
+  private val counterFailures = statReceiver.counter("failures")
+
   private[this] def readOneStat(
       statNamespace: String,
       statSource: String,
       statName: String,
       timestamp: Int
-  ): Future[Double] = {
+  ): Future[(Int, Double)] = {
     val key = fStoreKey(statNamespace, statSource, statName, timestamp)
-    redisClient.get(StringToChannelBuffer.apply(key, Charsets.Utf8)).map { cbOption =>
-      if(cbOption.isEmpty) {
-        throw new NoSuchElementException(key)
-      } else {
-        java.lang.Double.valueOf(CBToString(cbOption.get, Charsets.Utf8))
-      }
+    redisClient.get(StringToChannelBuffer.apply(key, Charsets.Utf8)).map {
+      case Some(cbValue) =>
+        val value = java.lang.Double.valueOf(CBToString(cbValue, Charsets.Utf8))
+        (timestamp, value)
+      case _ =>
+        throw new ValueNotFoundAtTimestamp(timestamp)
     }
   }
 
-  def collect[T1, T2](
-      ks: IndexedSeq[T1],
-      vs: IndexedSeq[Future[T2]],
-      ex: Map[T1, Either[Throwable, T2]]
-  ): Future[Map[T1, Either[Throwable, T2]]]= {
-    if(ks.isEmpty) {
-      Future.value(Map.empty)
+  def collect(
+      fs: Seq[Future[(Int, Double)]],
+      ex: Map[Int, Either[Throwable, Double]]
+  ): Future[Map[Int, Either[Throwable, Double]]]= {
+    if(fs.isEmpty) {
+      Future.value(ex)
     } else {
-      Future.selectIndex(vs).flatMap { i: Int =>
-        val ksNew = ks.drop(i) ++ ks.dropRight(ks.length - 1 - i)
-        val vsNew = vs.drop(i) ++ vs.dropRight(vs.length - 1 - i)
-        Await.result(vs(i).liftToTry) match {
-          case Return(v) =>
-            collect(ksNew, vsNew, ex + (ks(i) -> Right(v)))
-          case Throw(t) =>
-            collect(ksNew, vsNew, ex + (ks(i) -> Left(t)))
+      Future.select(fs).flatMap { t =>
+        val (tryCompleted, futureRemaining) = t
+        tryCompleted match {
+          case Return((timestamp, value)) =>
+            collect(futureRemaining, ex + (timestamp -> Right(value)))
+          case Throw(e) => e match {
+            case ValueNotFoundAtTimestamp(timestamp) =>
+              val leftEx: Either[Throwable, Double] = Left(e)
+              collect(futureRemaining, ex + (timestamp -> leftEx))
+            case _ =>
+              collect(futureRemaining, ex)
+          }
+          case _ =>
+            collect(futureRemaining, ex)
         }
       }
     }
   }
 
-  def read(req: StatReadRequest): Future[StatReadResponse] = {
-    val timestamps: IndexedSeq[Int] = (req.fromTimestamp until req.toTimestamp by req.timestampIncrement).toIndexedSeq
-    val futureReads: IndexedSeq[Future[Double]] = timestamps.map { timestamp =>
+  override def read(req: StatReadRequest): Future[StatReadResponse] = {
+    counterRequests.incr()
+    val timestamps: Seq[Int] = (req.fromTimestamp until req.toTimestamp by req.timestampIncrement).toIndexedSeq
+    val futureReads: Seq[Future[(Int, Double)]] = timestamps.map { timestamp =>
       readOneStat(req.statNamespace, req.statSource, req.statName, timestamp)
     }
     val ex: Map[Int, Either[Throwable, Double]] = Map.empty
-    collect(timestamps, futureReads, ex).map { m =>
+    collect(futureReads, ex).map { m =>
       val keys = m.keys.toIndexedSeq.sorted
       val values: Seq[Double] = keys.map {
         m(_).fold({_ => Double.NaN}, {v: Double => v})
@@ -65,5 +82,7 @@ class RedisStatReaderService(
       }
       StatReadResponse(values, failedTimestamps)
     }
+    .onSuccess { _ => counterSuccess.incr() }
+    .onFailure { _ => counterFailures.incr() }
   }
 }

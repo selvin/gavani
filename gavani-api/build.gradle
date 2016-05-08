@@ -4,12 +4,10 @@ apply plugin: 'idea'
 
 sourceCompatibility = 1.8
 
-mainClassName = "io.gavani.datastore.redis.GavaniDatastoreRedis"
+mainClassName = "io.gavani.api.GavaniApiServer"
 
 dependencies {
-  compile group: 'com.twitter', name: 'twitter-server_2.11', version: '1.16.0'
-  compile group: 'com.twitter', name: 'util-stats_2.11', version: '6.30.0'
-  compile group: 'com.twitter', name: 'finagle-redis_2.11', version: '6.31.0'
+  compile group: 'com.twitter.finatra', name: 'finatra-http_2.11', version: '2.1.5'
 
   compile project(':gavani-thrift:gavani-thrift-scrooge')
 
@@ -17,11 +15,10 @@ dependencies {
   testCompile "org.mockito:mockito-core:1.+"
 
   runtime group: 'com.twitter', name: 'finagle-stats_2.11', version: '6.31.0'
-  // runtime group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.14'
+  runtime group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.14'
 }
 
 repositories {
   mavenCentral()
-  // jcenter()
   maven { url "http://maven.twttr.com" }
 }
