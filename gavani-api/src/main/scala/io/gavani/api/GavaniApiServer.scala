@@ -19,4 +19,3 @@ object GavaniApiServer extends HttpServer {
       .add[GavaniReaderController]
   }
 }
-

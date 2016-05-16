@@ -1,5 +1,6 @@
 package io.gavani.exporter.companion
 
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
 import com.twitter.finagle.{Http, Thrift}
@@ -27,41 +28,48 @@ object CompanionStatExporterMain extends TwitterServer {
   val flagStatsWriteDeadline = flag("statsWriteDeadline", 45.seconds,
     "Deadline for completion of stats write")
 
-  val flagStatCollectionConfigs = flag[Seq[StatCollectionConfig]]("statCollectionConfigs",
-    Seq.empty,
-    "stat collection configs for each source whose stats are being exported")(StatCollectionConfig)
+  val flagStatCollectionConfig = flag[File]("statCollectionConfig",
+    { throw new IllegalArgumentException },
+    "stat collection configs for each source whose stats are being exported")
 
   override def failfastOnFlagsNotParsed: Boolean = true
 
   val exporterTimerTasks = new AtomicReference[Seq[TimerTask]](Nil)
 
-  override def defaultHttpPort = 9474
+  override def defaultHttpPort = 9471
 
-  def main(): Unit = {
+  private[this] def makeExporters(): Seq[CompanionStatExporter] = {
     val statWriter = Thrift.newIface[StatWriter.FutureIface](
       flagStatWriterDestination(),
       "exporter_stat_writer"
     )
-    val exporters = flagStatCollectionConfigs().map { statCollectionConfig: StatCollectionConfig =>
-      log.info("Creating an exporter for cfg: " + statCollectionConfig.toString)
 
-      val hostSlashPort = statCollectionConfig.addr.getHostName + "/" +
-        statCollectionConfig.addr.getPort
-      val dest = "/$/inet/" + hostSlashPort
-      val label = "statsHTTP" + hostSlashPort
+    val exporters = StatCollectionConfig.fromJSONFile(
+      flagStatCollectionConfig()).map { statCollectionConfig: StatCollectionConfig =>
+        log.info("Creating an exporter for cfg: " + statCollectionConfig.toString)
 
-      val httpClient = Http.client.newService(dest, label)
+        val hostSlashPort = statCollectionConfig.addr.getHostName + "/" +
+          statCollectionConfig.addr.getPort
+        val dest = "/$/inet/" + hostSlashPort
+        val label = "statsHTTP" + hostSlashPort
 
-      new CompanionStatExporter(
-        statWriter,
-        httpClient,
-        statCollectionConfig,
-        flagPeriod(),
-        flagPerPeriodDelay(),
-        flagStatsWriteDeadline(),
-        timer)
-    }
+        val httpClient = Http.client.newService(dest, label)
 
+        new CompanionStatExporter(
+          statWriter,
+          httpClient,
+          statCollectionConfig,
+          flagPeriod(),
+          flagPerPeriodDelay(),
+          flagStatsWriteDeadline(),
+          timer)
+      }
+
+    exporters
+  }
+
+  def main(): Unit = {
+    val exporters = makeExporters()
     exporterTimerTasks.set(exporters.map { exporter =>
       val exporterTimerTask = timer.schedule(flagSchedulePeriod()) { exporter.process() }
       closeOnExit(exporterTimerTask)

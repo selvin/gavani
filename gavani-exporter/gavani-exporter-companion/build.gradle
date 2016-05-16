@@ -9,10 +9,11 @@ mainClassName = "io.gavani.exporter.companion.CompanionStatExporterMain"
 dependencies {
   compile group: 'com.twitter', name: 'twitter-server_2.11', version: '1.16.0'
   compile group: 'com.twitter', name: 'util-stats_2.11', version: '6.30.0'
-  compile group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.7.1'
-  compile group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.7.1'
-  compile group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.7.1'
-  compile group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.7.1'
+  compile group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.6.6'
+  compile group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.6.6'
+  compile group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.6.6'
+  compile group: 'com.fasterxml.jackson.module', name: 'jackson-module-scala_2.11', version: '2.6.6'
+  compile group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.6.6'
 
   compile project(':gavani-thrift:gavani-thrift-scrooge')
 
@@ -21,6 +22,21 @@ dependencies {
 
   runtime group: 'com.twitter', name: 'finagle-stats_2.11', version: '6.31.0'
   // runtime group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.14'
+}
+
+configurations.all {
+  resolutionStrategy {
+    failOnVersionConflict()
+
+    forcedModules = [
+      'com.fasterxml.jackson.core:jackson-core:2.6.6',
+      'com.fasterxml.jackson.core:jackson-databind:2.6.6',
+      'com.fasterxml.jackson.core:jackson-annotations:2.6.6',
+      'com.fasterxml.jackson.module:jackson-module-scala_2.11:2.6.6',
+      'org.scala-lang:scala-library:2.11.7',
+      'commons-lang:commons-lang:2.6'
+    ]
+  }
 }
 
 repositories {

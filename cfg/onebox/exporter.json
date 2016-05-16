@@ -1,0 +1,20 @@
+[
+  {
+    "host": "localhost",
+    "port": 9472,
+    "namespace": "gavani/reader",
+    "source": "0"
+  },
+  {
+    "host": "localhost",
+    "port": 9473,
+    "namespace": "gavani/writer",
+    "source": "0"
+  },
+  {
+    "host": "localhost",
+    "port": 9474,
+    "namespace": "gavani/api",
+    "source": "0"
+  }
+]

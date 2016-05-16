@@ -55,6 +55,7 @@ function build {
 
 function assemble {
   mkdir -p ${DISTRO_DIR}/bin
+  mkdir -p ${DISTRO_DIR}/cfg
 
   cp $REPO_DIR/gavani-api/$GRADLE_DIST/gavani-api.zip ${DISTRO_DIR}
   cp $REPO_DIR/gavani-datastore/gavani-datastore-redis/$GRADLE_DIST/gavani-datastore-redis.zip ${DISTRO_DIR}
@@ -62,6 +63,7 @@ function assemble {
 
   cd ${REPO_DIR} && zip -r ${DISTRO_DIR}/gavani-web.zip gavani-web/ && cd -
   cp $REPO_DIR/scripts/onebox/* ${DISTRO_DIR}/bin
+  cp $REPO_DIR/cfg/onebox/* ${DISTRO_DIR}/cfg
 
   cd $BUILD_DIR && zip -r ${DISTRO_ZIP} ${DISTRO_NAME}/ && cd -
   mkdir -p ${DIST_LOC}
